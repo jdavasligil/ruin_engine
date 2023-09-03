@@ -7,7 +7,7 @@ use crate::colors::Colors::*;
 use crate::colors::Colors;
 
 use std::num::NonZeroU32;
-use glam::Vec3;
+use glam::{Vec3, Vec3A};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -41,13 +41,46 @@ impl Vertex {
     }
 }
 
-#[derive(Default)]
-struct MeshData {
-    vertices: Vec<Vertex>,
-    faces: Vec<Face>,
+// Adjacency list is a dynamic flat array.
+// This structure stores a list of adjacency arrays in a flat structure.
+// The jth adjacent vertex id for the ith vertex is obtained by:
+// idx = i * chunk_size + j
+// Diagram: [[v1, v2, ... , v32][w1, w2, ... , w32] ...]
+struct AdjacencyList {
+    data: Vec<VertexID>,
+    chunk_size: u32,
 }
 
-impl MeshData {
+impl AdjacencyList {
+    fn new() -> AdjacencyList {
+        AdjacencyList {
+            data: Vec::<VertexID>::new(),
+            chunk_size: 32,
+        }
+    }
+    fn insert(idx: usize,) {
+    }
+}
+
+struct VertexData {
+    positions: Vec<Vec3A>,
+    normals: Vec<Vec3A>,
+    colors: Vec<Color>,
+    intensities: Vec<u8>,
+    adjacents: AdjacencyList,
+}
+
+struct FaceData {
+
+}
+
+#[derive(Default)]
+struct Mesh {
+    vertices: Vec<VertexData>,
+    faces: Vec<FaceData>,
+}
+
+impl Mesh {
     fn build_cube(origin: Vec3, scale: f32, color: Color) {
     }
 }
