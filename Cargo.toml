@@ -1,0 +1,17 @@
+[package]
+name = "ruin_engine"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+softbuffer = "0.3"
+winit = "0.28"
+glam = "0.24"
+web-sys = "0.3"
+
+[workspace]
+members = [
+    "run-wasm",
+]
