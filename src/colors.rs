@@ -19,8 +19,8 @@ pub mod Colors {
         pub fn as_tuple(&self) -> (u8, u8, u8) {
             (
                 (self.value >> 16) as u8,
-                ((self.value & (((1 << 32) - 1) >> 16)) >> 8) as u8,
-                (self.value & (((1 << 32) - 1) >> 24)) as u8,
+                ((self.value & (((1 << 31) - 1) >> 16)) >> 8) as u8,
+                (self.value & (((1 << 31) - 1) >> 24)) as u8,
             )
         }
     }

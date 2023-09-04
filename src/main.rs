@@ -71,13 +71,14 @@ struct VertexData {
 }
 
 struct FaceData {
-
+    triangles: Vec<Face>,
+//    normals: Vec<Vec3A>,
 }
 
 #[derive(Default)]
 struct Mesh {
     vertices: Vec<VertexData>,
-    faces: Vec<FaceData>,
+    faces: Vec<Face>,
 }
 
 impl Mesh {
