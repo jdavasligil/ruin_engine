@@ -6,8 +6,9 @@ mod colors;
 use crate::colors::Colors::*;
 use crate::colors::Colors;
 
+use std::error::Error;
 use std::num::NonZeroU32;
-use glam::{Vec3, Vec3A};
+use glam::{Vec3, Vec3A, Vec4};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -55,7 +56,7 @@ impl AdjacencyList {
     fn new() -> AdjacencyList {
         AdjacencyList {
             data: Vec::<VertexID>::new(),
-            chunk_size: 32,
+            chunk_size: 8,
         }
     }
     fn insert(idx: usize,) {
@@ -86,6 +87,102 @@ impl Mesh {
     }
 }
 
+struct RasterBuffer {
+    vert_buf: [Vec4; 128],
+    face_buf: [Face; 128],
+    vert_count: usize,
+    face_count: usize,
+}
+
+impl RasterBuffer {
+    fn new() -> RasterBuffer {
+        RasterBuffer {
+            vert_buf: [Vec4::NAN; 128],
+            face_buf: [(usize::MAX, usize::MAX, usize::MAX); 128],
+            vert_count: 0,
+            face_count: 0,
+        }
+    }
+
+    fn flush(&mut self) {
+        self.vert_buf = [Vec4::NAN; 128];
+        self.face_buf = [(usize::MAX, usize::MAX, usize::MAX); 128];
+        self.vert_count = 0;
+        self.face_count = 0;
+    }
+
+    fn try_push_vert(&mut self, vert: (f32, f32, f32)) -> Result<(), &'static str> {
+        if self.vert_count >= 128 {
+            return Err("Buffer is full.");
+        }
+
+        self.vert_buf[self.vert_count] = Vec4::new(vert.0, vert.1, vert.2, 1.0);
+        self.vert_count += 1;
+
+        Ok(())
+    }
+
+    fn try_find_vert(&self, v: (f32, f32, f32)) -> Result<usize, &'static str> {
+
+        let mut idx: usize = 0;
+
+        while idx < self.vert_count {
+
+            if self.vert_buf[idx].x == v.0 &&
+               self.vert_buf[idx].y == v.1 &&
+               self.vert_buf[idx].z == v.2 {
+                return Ok(idx);
+            }
+
+            idx += 1;
+        }
+
+        Err("Vertex not found.")
+    }
+
+    fn try_push_tri(&mut self,
+                    v1: (f32, f32, f32),
+                    v2: (f32, f32, f32),
+                    v3: (f32, f32, f32)) -> Result<(), &'static str> {
+
+        if self.face_count >= 128 {
+            return Err("Buffer is full.");
+        }
+
+        let mut face: Face = (0, 0, 0);
+
+        face.0 = match self.try_find_vert(v1) {
+            Ok(idx) => idx,
+            Err(str) => return Err(str),
+        };
+        face.1 = match self.try_find_vert(v2) {
+            Ok(idx) => idx,
+            Err(str) => return Err(str),
+        };
+        face.2 = match self.try_find_vert(v3) {
+            Ok(idx) => idx,
+            Err(str) => return Err(str),
+        };
+
+        self.face_buf[self.face_count] = face;
+        self.face_count += 1;
+
+        Ok(())
+    }
+
+    fn try_push_face(&mut self, face: Face) -> Result<(), &'static str> {
+
+        if self.face_count >= 128 {
+            return Err("Buffer is full.");
+        }
+        
+        self.face_buf[self.face_count] = face;
+        self.face_count += 1;
+
+        Ok(())
+    }
+}
+
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
     for y in 0..height {
         for x in 0..width {
@@ -103,8 +200,29 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 }
 
 fn main() {
-    let mut vertex_list = Vec::<Vertex>::new();
-    let mut face_list = Vec::<Face>::new();
+    let mut buf = RasterBuffer::new();
+
+    buf.try_push_vert((1.0, 1.0, 1.0)).unwrap();    // 0
+    buf.try_push_vert((-1.0, 1.0, 1.0)).unwrap();   // 1
+    buf.try_push_vert((1.0, -1.0, 1.0)).unwrap();   // 2
+    buf.try_push_vert((1.0, 1.0, -1.0)).unwrap();   // 3
+    buf.try_push_vert((-1.0, -1.0, 1.0)).unwrap();  // 4
+    buf.try_push_vert((-1.0, 1.0, -1.0)).unwrap();  // 5
+    buf.try_push_vert((1.0, -1.0, -1.0)).unwrap();  // 6
+    buf.try_push_vert((-1.0, -1.0, -1.0)).unwrap(); // 7
+
+    buf.try_push_face((0,1,2)).unwrap();
+    buf.try_push_face((1,4,2)).unwrap();
+    buf.try_push_face((0,2,6)).unwrap();
+    buf.try_push_face((0,6,3)).unwrap();
+    buf.try_push_face((3,6,7)).unwrap();
+    buf.try_push_face((3,7,5)).unwrap();
+    buf.try_push_face((5,7,4)).unwrap();
+    buf.try_push_face((5,4,1)).unwrap();
+    buf.try_push_face((0,5,1)).unwrap();
+    buf.try_push_face((0,3,5)).unwrap();
+    buf.try_push_face((2,7,6)).unwrap();
+    buf.try_push_face((2,4,7)).unwrap();
 
     let event_loop = EventLoop::new();
 
