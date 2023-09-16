@@ -6,9 +6,8 @@ mod colors;
 use crate::colors::Colors::*;
 use crate::colors::Colors;
 
-use std::error::Error;
 use std::num::NonZeroU32;
-use glam::{Vec3, Vec3A, Vec4};
+use glam::{Vec3, Vec3A, Vec4, Mat3};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -20,73 +19,80 @@ const HEIGHT: i16 = 800;
 type VertexID = usize;
 type Face = (VertexID, VertexID, VertexID);
 
-// TODO: Implement hyperbolic & linear Gouraud Shading
-#[derive(Default)]
-struct Vertex {
-    position: Vec3,
-    normal: Vec3,
-    color: Color,
-    lux: u8, // Luminous Flux (0-255)
-    adjacents: Vec<VertexID>,
-}
+// NOTES:
+// Raster (Pixel) Space: The actual pixel dimensional space of the device.
+// Normalized Device Coordinate Space (NDC): Points are in the range [-1, 1].
+//       This is a 2D normalized screen-space for drawing.
 
-impl Vertex {
-    fn new(position: Vec3) -> Vertex {
-        Vertex {
-            position,
-            normal: Vec3::ZERO,
-            color: Colors::BLUE,
-            lux: 255,
-            adjacents: Vec::<VertexID>::new(),
-        }
-    }
-}
 
-// Adjacency list is a dynamic flat array.
-// This structure stores a list of adjacency arrays in a flat structure.
-// The jth adjacent vertex id for the ith vertex is obtained by:
-// idx = i * chunk_size + j
-// Diagram: [[v1, v2, ... , v32][w1, w2, ... , w32] ...]
-struct AdjacencyList {
-    data: Vec<VertexID>,
-    chunk_size: u32,
-}
+// // TODO: Implement hyperbolic & linear Gouraud Shading
+// #[derive(Default)]
+// struct Vertex {
+//     position: Vec3,
+//     normal: Vec3,
+//     color: Color,
+//     lux: u8, // Luminous Flux (0-255)
+//     adjacents: Vec<VertexID>,
+// }
+// 
+// impl Vertex {
+//     fn new(position: Vec3) -> Vertex {
+//         Vertex {
+//             position,
+//             normal: Vec3::ZERO,
+//             color: Colors::BLUE,
+//             lux: 255,
+//             adjacents: Vec::<VertexID>::new(),
+//         }
+//     }
+// }
+// 
+// // Adjacency list is a dynamic flat array.
+// // This structure stores a list of adjacency arrays in a flat structure.
+// // The jth adjacent vertex id for the ith vertex is obtained by:
+// // idx = i * chunk_size + j
+// // Diagram: [[v1, v2, ... , v32][w1, w2, ... , w32] ...]
+// struct AdjacencyList {
+//     data: Vec<VertexID>,
+//     chunk_size: u32,
+// }
+// 
+// impl AdjacencyList {
+//     fn new() -> AdjacencyList {
+//         AdjacencyList {
+//             data: Vec::<VertexID>::new(),
+//             chunk_size: 8,
+//         }
+//     }
+//     fn insert(idx: usize,) {
+//     }
+// }
+// 
+// struct VertexData {
+//     positions: Vec<Vec3A>,
+//     normals: Vec<Vec3A>,
+//     colors: Vec<Color>,
+//     intensities: Vec<u8>,
+//     adjacents: AdjacencyList,
+// }
+// 
+// struct FaceData {
+//     triangles: Vec<Face>,
+// //    normals: Vec<Vec3A>,
+// }
+// 
+// #[derive(Default)]
+// struct Mesh {
+//     vertices: Vec<VertexData>,
+//     faces: Vec<Face>,
+// }
+// 
+// impl Mesh {
+//     fn build_cube(origin: Vec3, scale: f32, color: Color) {
+//     }
+// }
 
-impl AdjacencyList {
-    fn new() -> AdjacencyList {
-        AdjacencyList {
-            data: Vec::<VertexID>::new(),
-            chunk_size: 8,
-        }
-    }
-    fn insert(idx: usize,) {
-    }
-}
-
-struct VertexData {
-    positions: Vec<Vec3A>,
-    normals: Vec<Vec3A>,
-    colors: Vec<Color>,
-    intensities: Vec<u8>,
-    adjacents: AdjacencyList,
-}
-
-struct FaceData {
-    triangles: Vec<Face>,
-//    normals: Vec<Vec3A>,
-}
-
-#[derive(Default)]
-struct Mesh {
-    vertices: Vec<VertexData>,
-    faces: Vec<Face>,
-}
-
-impl Mesh {
-    fn build_cube(origin: Vec3, scale: f32, color: Color) {
-    }
-}
-
+/// A simple SIMD buffer containing vertex and face (vertex id triplet) data.
 struct RasterBuffer {
     vert_buf: [Vec4; 128],
     face_buf: [Face; 128],
@@ -181,20 +187,54 @@ impl RasterBuffer {
 
         Ok(())
     }
+
+    fn try_face_to_mat(&self, face_idx: usize) -> Result<Mat3, &'static str> {
+        if face_idx >= self.face_count {
+            return Err("Index out of range.");
+        }
+
+        Ok(Mat3::from_cols(
+                self.vert_buf[self.face_buf[face_idx].0].truncate(),
+                self.vert_buf[self.face_buf[face_idx].1].truncate(),
+                self.vert_buf[self.face_buf[face_idx].2].truncate()
+        ))
+    }
 }
 
-fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
+fn redraw(buffer: &mut [u32], raster_buffer: &mut RasterBuffer, width: usize, height: usize) {
+    // Initialize vertex matrix
+    let tri_mat = raster_buffer.try_face_to_mat(0).unwrap();
+
+    // Store the inverse
+    let tri_mat_inv = tri_mat.inverse();
+
+    // Calculate edge functions (to test what side of each edge the test point exists)
+    let edge_test_0 = tri_mat_inv * Vec3::new(1.0, 0.0, 0.0);
+    let edge_test_1 = tri_mat_inv * Vec3::new(0.0, 1.0, 0.0);
+    let edge_test_2 = tri_mat_inv * Vec3::new(0.0, 0.0, 1.0);
+
+    // Begin rasterizing by looping over pixels
     for y in 0..height {
         for x in 0..width {
-            let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
-                0x00ffffff
-            } else {
-                let red = (x & 0xff) ^ (y & 0xff);
-                let green = (x & 0x7f) ^ (y & 0x7f);
-                let blue = (x & 0x3f) ^ (y & 0x3f);
-                (blue | (green << 8) | (red << 16)) as u32
-            };
-            buffer[y * width + x] = value;
+            // Sample location at the center of each pixel
+            let sample: Vec3 = Vec3::new((x as f32) + 0.5, (y as f32) + 0.5, 1.0);
+
+            let alpha = sample.dot(edge_test_0);
+            let beta = sample.dot(edge_test_1);
+            let gamma = sample.dot(edge_test_2);
+
+            // let red = (x & 0xff) ^ (y & 0xff);
+            // let green = (x & 0x7f) ^ (y & 0x7f);
+            // let blue = (x & 0x3f) ^ (y & 0x3f);
+            // let value = (blue | (green << 8) | (red << 16)) as u32;
+            let value = (0xff << 16) as u32;
+
+            if (alpha >= 0.0) && (beta >= 0.0) && (gamma >= 0.0) {
+                buffer[y * width + x] = value;
+            }
+            else {
+                buffer[y * width + x] = 0;
+            }
         }
     }
 }
@@ -272,7 +312,7 @@ fn main() {
 
                 // Draw something in the window
                 let mut buffer = surface.buffer_mut().unwrap();
-                redraw(&mut buffer, width as usize, height as usize, flag);
+                redraw(&mut buffer, &mut buf, width as usize, height as usize);
                 buffer.present().unwrap();
             }
 
