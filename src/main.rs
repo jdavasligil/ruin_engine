@@ -7,10 +7,12 @@ use crate::colors::Colors::*;
 use crate::colors::Colors;
 
 use std::num::NonZeroU32;
-use glam::{Vec3, Vec3A, Vec4, Mat3};
+use std::rc::Rc;
+use glam::{Vec3, Vec4, Mat3};
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::keyboard::{Key, NamedKey};
 use winit::window::WindowBuilder;
 
 const WIDTH: i16 = 800;
@@ -264,13 +266,15 @@ fn main() {
     buf.try_push_face((2,7,6)).unwrap();
     buf.try_push_face((2,4,7)).unwrap();
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
-    let window = WindowBuilder::new()
-        .with_title("Press space to show/hide a rectangle")
-        .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
-        .build(&event_loop)
-        .unwrap();
+    let window = Rc::new( 
+        WindowBuilder::new()
+            .with_title("Press space to show/hide a rectangle")
+            .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
+            .build(&event_loop)
+            .unwrap(),
+        );
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -282,20 +286,23 @@ fn main() {
             .unwrap()
             .body()
             .unwrap()
-            .append_child(&window.canvas())
+            .append_child(&window.canvas().unwrap())
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut flag = false;
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::RedrawRequested,
+            } if window_id == window.id() => {
                 // Grab the window's client area dimensions
                 let (width, height) = {
                     let size = window.inner_size();
@@ -317,31 +324,28 @@ fn main() {
             }
 
             Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
                 window_id,
+                event: WindowEvent::CloseRequested,
             } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
 
             Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Space),
-                                ..
-                            },
+                window_id,
+                event: WindowEvent::KeyboardInput {
+                    event: KeyEvent {
+                        state: ElementState::Pressed,
+                        logical_key: Key::Named(NamedKey::Space),
                         ..
                     },
-                window_id,
+                    ..
+                },
             } if window_id == window.id() => {
                 // Flip the rectangle flag and request a redraw to show the changed image
                 flag = !flag;
                 window.request_redraw();
             }
-
             _ => {}
         }
-    });
+    }).unwrap();
 }
