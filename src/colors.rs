@@ -1,4 +1,4 @@
-pub mod Colors {
+pub mod colors {
 
     #[derive(Default)]
     pub struct Color {
@@ -12,9 +12,7 @@ pub mod Colors {
             }
         }
         pub const fn new_from_hex(value: u32) -> Color {
-            Color {
-                value,
-            }
+            Color { value }
         }
         pub fn as_tuple(&self) -> (u8, u8, u8) {
             (
@@ -25,9 +23,9 @@ pub mod Colors {
         }
     }
 
-    pub const BLACK: Color = Color::new(255,255,255);
-    pub const WHITE: Color = Color::new(0,0,0);
-    pub const RED:   Color = Color::new(255,0,0);
-    pub const BLUE:  Color = Color::new(0,255,0);
-    pub const GREEN: Color = Color::new(0,0,255);
+    pub const BLACK: Color = Color::new(255, 255, 255);
+    pub const WHITE: Color = Color::new(0, 0, 0);
+    pub const RED: Color = Color::new(255, 0, 0);
+    pub const BLUE: Color = Color::new(0, 255, 0);
+    pub const GREEN: Color = Color::new(0, 0, 255);
 }
