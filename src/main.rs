@@ -17,7 +17,7 @@ const WIDTH: i16 = 800;
 const HEIGHT: i16 = 800;
 
 type VertexID = usize;
-type Face = (VertexID, VertexID, VertexID);
+type Tri = (VertexID, VertexID, VertexID);
 
 // NOTES:
 // Raster (Pixel) Space: The actual pixel dimensional space of the device.
@@ -30,29 +30,28 @@ type Face = (VertexID, VertexID, VertexID);
 
 /// A simple SIMD buffer containing vertex and face (vertex id triplet) data.
 struct RasterBuffer {
-    // TODO: Vertex Lighting
+    // TODO: Vertex Lighting and Normals
     vert_buf: [Vec4; 128],
-    // TODO: Face Normals
-    face_buf: [Face; 128],
+    tri_buf: [Tri; 128],
     vert_count: usize,
-    face_count: usize,
+    tri_count: usize,
 }
 
 impl RasterBuffer {
     fn new() -> RasterBuffer {
         RasterBuffer {
             vert_buf: [Vec4::NAN; 128],
-            face_buf: [(usize::MAX, usize::MAX, usize::MAX); 128],
+            tri_buf: [(usize::MAX, usize::MAX, usize::MAX); 128],
             vert_count: 0,
-            face_count: 0,
+            tri_count: 0,
         }
     }
 
     fn flush(&mut self) {
         self.vert_buf = [Vec4::NAN; 128];
-        self.face_buf = [(usize::MAX, usize::MAX, usize::MAX); 128];
+        self.tri_buf = [(usize::MAX, usize::MAX, usize::MAX); 128];
         self.vert_count = 0;
-        self.face_count = 0;
+        self.tri_count = 0;
     }
 
     fn try_push_vert(&mut self, vert: (f32, f32, f32)) -> Result<(), &'static str> {
@@ -83,57 +82,57 @@ impl RasterBuffer {
         Err("Vertex not found.")
     }
 
-    fn try_push_tri(
+    fn try_push_tri_from_vert(
         &mut self,
         v1: (f32, f32, f32),
         v2: (f32, f32, f32),
         v3: (f32, f32, f32),
     ) -> Result<(), &'static str> {
-        if self.face_count >= 128 {
+        if self.tri_count >= 128 {
             return Err("Buffer is full.");
         }
 
-        let mut face: Face = (0, 0, 0);
+        let mut tri: Tri = (0, 0, 0);
 
-        face.0 = match self.try_find_vert(v1) {
+        tri.0 = match self.try_find_vert(v1) {
             Ok(idx) => idx,
             Err(str) => return Err(str),
         };
-        face.1 = match self.try_find_vert(v2) {
+        tri.1 = match self.try_find_vert(v2) {
             Ok(idx) => idx,
             Err(str) => return Err(str),
         };
-        face.2 = match self.try_find_vert(v3) {
+        tri.2 = match self.try_find_vert(v3) {
             Ok(idx) => idx,
             Err(str) => return Err(str),
         };
 
-        self.face_buf[self.face_count] = face;
-        self.face_count += 1;
+        self.tri_buf[self.tri_count] = tri;
+        self.tri_count += 1;
 
         Ok(())
     }
 
-    fn try_push_face(&mut self, face: Face) -> Result<(), &'static str> {
-        if self.face_count >= 128 {
+    fn try_push_tri(&mut self, tri: Tri) -> Result<(), &'static str> {
+        if self.tri_count >= 128 {
             return Err("Buffer is full.");
         }
 
-        self.face_buf[self.face_count] = face;
-        self.face_count += 1;
+        self.tri_buf[self.tri_count] = tri;
+        self.tri_count += 1;
 
         Ok(())
     }
 
-    fn try_face_to_mat(&self, face_idx: usize) -> Result<Mat3, &'static str> {
-        if face_idx >= self.face_count {
+    fn try_tri_to_mat(&self, tri_idx: usize) -> Result<Mat3, &'static str> {
+        if tri_idx >= self.tri_count {
             return Err("Index out of range.");
         }
 
         Ok(Mat3::from_cols(
-            self.vert_buf[self.face_buf[face_idx].0].truncate(),
-            self.vert_buf[self.face_buf[face_idx].1].truncate(),
-            self.vert_buf[self.face_buf[face_idx].2].truncate(),
+            self.vert_buf[self.tri_buf[tri_idx].0].truncate(),
+            self.vert_buf[self.tri_buf[tri_idx].1].truncate(),
+            self.vert_buf[self.tri_buf[tri_idx].2].truncate(),
         ))
     }
 }
@@ -145,7 +144,7 @@ fn redraw(
     height: usize
 ) {
     // Initialize vertex matrix
-    let tri_mat = raster_buffer.try_face_to_mat(0).unwrap();
+    let tri_mat = raster_buffer.try_tri_to_mat(0).unwrap();
 
     // Store the inverse
     let tri_mat_inv = tri_mat.inverse();
@@ -219,18 +218,18 @@ fn main() {
     buf.try_push_vert((1.0, -1.0, -1.0)).unwrap(); // 6
     buf.try_push_vert((-1.0, -1.0, -1.0)).unwrap(); // 7
 
-    buf.try_push_face((0, 1, 2)).unwrap();
-    buf.try_push_face((1, 4, 2)).unwrap();
-    buf.try_push_face((0, 2, 6)).unwrap();
-    buf.try_push_face((0, 6, 3)).unwrap();
-    buf.try_push_face((3, 6, 7)).unwrap();
-    buf.try_push_face((3, 7, 5)).unwrap();
-    buf.try_push_face((5, 7, 4)).unwrap();
-    buf.try_push_face((5, 4, 1)).unwrap();
-    buf.try_push_face((0, 5, 1)).unwrap();
-    buf.try_push_face((0, 3, 5)).unwrap();
-    buf.try_push_face((2, 7, 6)).unwrap();
-    buf.try_push_face((2, 4, 7)).unwrap();
+    buf.try_push_tri((0, 1, 2)).unwrap();
+    buf.try_push_tri((1, 4, 2)).unwrap();
+    buf.try_push_tri((0, 2, 6)).unwrap();
+    buf.try_push_tri((0, 6, 3)).unwrap();
+    buf.try_push_tri((3, 6, 7)).unwrap();
+    buf.try_push_tri((3, 7, 5)).unwrap();
+    buf.try_push_tri((5, 7, 4)).unwrap();
+    buf.try_push_tri((5, 4, 1)).unwrap();
+    buf.try_push_tri((0, 5, 1)).unwrap();
+    buf.try_push_tri((0, 3, 5)).unwrap();
+    buf.try_push_tri((2, 7, 6)).unwrap();
+    buf.try_push_tri((2, 4, 7)).unwrap();
 
     let mut flag = false;
 
@@ -346,15 +345,15 @@ fn main() {
 //     adjacents: AdjacencyList,
 // }
 //
-// struct FaceData {
-//     triangles: Vec<Face>,
+// struct TriData {
+//     triangles: Vec<Tri>,
 // //    normals: Vec<Vec3A>,
 // }
 //
 // #[derive(Default)]
 // struct Mesh {
 //     vertices: Vec<VertexData>,
-//     faces: Vec<Face>,
+//     faces: Vec<Tri>,
 // }
 //
 // impl Mesh {
